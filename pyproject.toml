@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "img2art"
+version = "0.1.0"
+description = ""
+authors = ["Asthestarsfalll <1186454801@qq.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+typer = "^0.9.0"
+
+
+[tool.poetry.scripts]
+img2art = "img2art.cli:launch"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
