@@ -1,8 +1,9 @@
-Convert image to ascii art.
+Convert image/gif/video to ascii art.
 
 ## Screen Shot
 
 ![example](./asset/example.gif)
+![example1](./asset/example1.gif)
 
 ## Installation
 
