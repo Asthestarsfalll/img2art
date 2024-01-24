@@ -2,8 +2,8 @@ Convert image/gif/video to ascii art.
 
 ## Screen Shot
 
-![example](./asset/example.gif)
-![example1](./asset/example1.gif)
+![example](./assets/example.gif)
+![example1](./assets/example2.gif)
 
 ## Installation
 
