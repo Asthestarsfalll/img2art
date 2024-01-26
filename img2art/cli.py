@@ -35,7 +35,8 @@ def main(
             callback=_generate_check_func(lambda x: not osp.exists(x)),
         ),
     ],
-    with_color: Annotated[bool, typer.Option(help="Whether use color")] = False,
+    with_color: Annotated[bool, typer.Option(
+        help="Whether use color")] = False,
     scale: Annotated[
         float,
         typer.Option(
@@ -61,8 +62,19 @@ def main(
             callback=_generate_check_func(_is_rgb),
         ),
     ] = (-1, -1, -1),
+    fast: Annotated[
+        bool,
+        typer.Option(
+            help="Whether use torch to accelerate when you inputs have plenty of frames."
+        ),
+    ] = False,
+    chunk_size: Annotated[
+        int, typer.Option(
+            help="Chunk size of Videos or Gifs when using torch.")
+    ] = 1024,
 ):
-    convert(source, with_color, scale, threshold, save_raw, bg_color)
+    convert(source, with_color, scale, threshold,
+            save_raw, bg_color, fast, chunk_size)
 
 
 def launch():

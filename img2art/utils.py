@@ -1,4 +1,5 @@
 import os.path as osp
+from math import ceil
 from time import sleep
 from typing import List, Optional, Tuple
 
@@ -21,7 +22,6 @@ def apply_threshold(data: np.ndarray, threshold: int) -> np.ndarray:
         threshold = cv2.threshold(
             data, threshold, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
         )[0]
-        print(threshold)
     return data > threshold
 
 
@@ -37,6 +37,55 @@ def convert2braille(bool_map: np.ndarray, y: int, x: int, h: int, w: int) -> str
                 if i != 3 or j != 1:
                     idx *= 2
     return BRAILLE[idx]
+
+
+def _fast_convert2braille(bool_maps: List[np.ndarray], chunk_size: int):
+    try:
+        import torch
+    except:
+        raise ModuleNotFoundError("Can not find torch")
+    with torch.no_grad():
+        ch = len(bool_maps)
+        inp = torch.tensor(np.array([bool_maps])).type(torch.float32)
+
+        if ch <= chunk_size:
+            loader = [inp]
+        else:
+            loader = torch.chunk(inp, ceil(ch / chunk_size))
+
+        kernel = (
+            torch.tensor([2**i for i in range(7, -1, -1)])
+            .reshape((1, 1, 4, 2))
+            .type(torch.float32)
+        )
+        if torch.cuda.is_available():
+            inp = inp.cuda()
+            kernel = kernel.cuda()
+        res = []
+        for x in loader:
+            ker = kernel.repeat(x.shape[1], 1, 1, 1)
+            res.append(
+                torch.nn.functional.conv2d(
+                    x, ker, padding=0, stride=(4, 2), groups=x.shape[1]
+                )
+            )
+        res = torch.concat(res, 1)
+        if torch.cuda.is_available():
+            res = res.cpu()
+        index_maps = res.numpy().astype(np.uint8)
+        index_maps = np.split(index_maps, ch, 1)
+        return [i[0, 0] for i in index_maps]
+
+
+def _get_braille(index_map: np.ndarray) -> List:
+    h, w = index_map.shape
+    raw = []
+    for i in range(h):
+        str_list = []
+        for j in range(w):
+            str_list.append(BRAILLE[int(index_map[i, j])])
+        raw.append("".join(str_list))
+    return raw
 
 
 def render(
@@ -106,7 +155,8 @@ def _apple_color(raw, bg_color, bgr_data):
     h = oh // 4
     w = ow // 2
     color_raw = [[] for _ in range(len(raw))]
-    colors = [cv2.resize(i, (w, h), interpolation=cv2.INTER_LINEAR) for i in bgr_data]
+    colors = [cv2.resize(i, (w, h), interpolation=cv2.INTER_LINEAR)
+              for i in bgr_data]
     colors = [cv2.cvtColor(i, cv2.COLOR_BGR2RGB) for i in colors]
     for idx, r in enumerate(raw):
         for i, line in enumerate(r):
@@ -117,10 +167,6 @@ def _apple_color(raw, bg_color, bgr_data):
     return color_raw
 
 
-def _fuse(fg, bg):
-    return fg + bg
-
-
 def convert(
     source: str,
     with_color: bool = False,
@@ -128,6 +174,8 @@ def convert(
     threshold: int = -1,
     save_raw: Optional[str] = None,
     bg_color: Optional[Tuple[int, int, int]] = None,
+    fast: bool = False,
+    chunk_size: int = False,
 ):
     ext = osp.splitext(source)[1][1:]
     try:
@@ -146,8 +194,12 @@ def convert(
 
     gray_data = [cv2.cvtColor(i, cv2.COLOR_BGR2GRAY) for i in bgr_data]
     bool_maps = [apply_threshold(i, threshold) for i in gray_data]
-
-    raw = _apply_convert(bool_maps)
+    
+    if fast:
+        index_maps = _fast_convert2braille(bool_maps, chunk_size)
+        raw = [_get_braille(x) for x in index_maps]
+    else:
+        raw = _apply_convert(bool_maps)
     color_raw = [[] for _ in range(len(gray_data))]
 
     if not with_color:
