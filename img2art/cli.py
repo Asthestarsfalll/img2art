@@ -35,8 +35,12 @@ def main(
             callback=_generate_check_func(lambda x: not osp.exists(x)),
         ),
     ],
-    with_color: Annotated[bool, typer.Option(
-        help="Whether use color")] = False,
+    with_color: Annotated[
+        bool,
+        typer.Option(
+            help="Whether use color. If you specify alpha, with-color will be forcely set to True."
+        ),
+    ] = False,
     scale: Annotated[
         float,
         typer.Option(
@@ -69,12 +73,34 @@ def main(
         ),
     ] = False,
     chunk_size: Annotated[
-        int, typer.Option(
-            help="Chunk size of Videos or Gifs when using torch.")
+        int, typer.Option(help="Chunk size of Videos or Gifs when using torch.")
     ] = 1024,
+    alpha: Annotated[
+        bool, typer.Option(help="Whether generating lua code for alpha-nvim.")
+    ] = False,
+    quant: Annotated[int, typer.Option(help="Apply color quantization.")] = -1,
 ):
-    convert(source, with_color, scale, threshold,
-            save_raw, bg_color, fast, chunk_size)
+    if alpha and not with_color:
+        with_color = True
+
+    if bg_color == (-1, -1, -1):
+        bg_color = None
+
+    if quant > 256:
+        raise RuntimeError("Consider using smaller quant.")
+
+    convert(
+        source,
+        with_color,
+        scale,
+        threshold,
+        save_raw,
+        bg_color,
+        fast,
+        chunk_size,
+        alpha,
+        quant,
+    )
 
 
 def launch():

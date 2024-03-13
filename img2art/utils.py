@@ -16,6 +16,12 @@ BRAILLE = (
     "⠉⢉⡉⣉⠩⢩⡩⣩⠍⢍⡍⣍⠭⢭⡭⣭⠙⢙⡙⣙⠹⢹⡹⣹⠝⢝⡝⣝⠽⢽⡽⣽⠋⢋⡋⣋⠫⢫⡫⣫⠏⢏⡏⣏⠯⢯⡯⣯⠛⢛⡛⣛⠻⢻⡻⣻⠟⢟⡟⣟⠿⢿⡿⣿"
 )
 
+HL_NAME = "I2A"
+NVIM_HL_TEMP = "{ %s, %d, %d }, "
+HL_TEMP = 'vim.api.nvim_set_hl(0, "%s", { %s })'
+HL_MAPPER = {}
+HL_IDX = 0
+
 
 def apply_threshold(data: np.ndarray, threshold: int) -> np.ndarray:
     if threshold == -1:
@@ -95,12 +101,34 @@ def render(
     c: str,
     bg_color: Optional[Tuple[int, int, int]] = None,
 ) -> str:
-    fore_color = list(color_mat[y, x, :])
+    fore_color = tuple(color_mat[y, x, :])
     if bg_color:
         return "\033[38;2;{};{};{};48;2;{};{};{}m{}\033[0m".format(
             *fore_color, *bg_color, c
         )
     return "\033[38;2;{};{};{}m{}".format(*fore_color, c)
+
+
+def _generate_hl(
+    color_mat: np.ndarray,
+    y: int,
+    x: int,
+    bg_color: Optional[str] = None,
+) -> Tuple[Optional[str], str]:
+    global HL_IDX
+    fore_color = "{:02x}{:02x}{:02x}".format(*color_mat[y, x, :])
+    hl_name = HL_MAPPER.get(fore_color, None)
+    res = None
+    if not hl_name:
+        hl_name = HL_NAME + str(HL_IDX)
+        HL_IDX += 1
+        HL_MAPPER[fore_color] = hl_name
+        res = HL_TEMP % (
+            hl_name,
+            f'fg="#{fore_color}"' + (f', bg="#{bg_color}"' if bg_color else ""),
+        )
+    code = NVIM_HL_TEMP % (f'"{hl_name}"', 3 * x, 3 * x + 3)
+    return res, code
 
 
 def show(img):
@@ -150,21 +178,64 @@ def _apply_convert(bool_maps: np.ndarray) -> List[List[str]]:
     return raw
 
 
-def _apple_color(raw, bg_color, bgr_data):
-    oh, ow = bgr_data[0].shape[:2]
-    h = oh // 4
-    w = ow // 2
+def _convert_hl(rgb_data, bg_color):
+    if bg_color:
+        bg_color = "{:02x}{:02x}{:02x}".format(*bg_color)
+    h = rgb_data.shape[0]
+    w = rgb_data.shape[1]
+    hl = []
+    code = []
+    for i in range(h):
+        generated = [_generate_hl(rgb_data, i, j, bg_color) for j in range(w)]
+        hl.extend([item[0] for item in generated if item[0]])
+        code.append("{ %s }," % ("".join([item[1] for item in generated])))
+    code = "dashboard.section.header.opts.hl = {\n %s \n}" % ("\n".join(code))
+    hl.append(code)
+    return hl
+
+
+def _apply_color(raw, bg_color, rgb_data):
     color_raw = [[] for _ in range(len(raw))]
-    colors = [cv2.resize(i, (w, h), interpolation=cv2.INTER_LINEAR)
-              for i in bgr_data]
-    colors = [cv2.cvtColor(i, cv2.COLOR_BGR2RGB) for i in colors]
     for idx, r in enumerate(raw):
         for i, line in enumerate(r):
             converted = [
-                render(colors[idx], i, j, c, bg_color) for j, c in enumerate(line)
+                render(rgb_data[idx], i, j, c, bg_color) for j, c in enumerate(line)
             ]
             color_raw[idx].append(r"".join(converted))
     return color_raw
+
+
+def _convert_color(bgr_data):
+    oh, ow = bgr_data[0].shape[:2]
+    h = oh // 4
+    w = ow // 2
+    colors = [cv2.resize(i, (w, h), interpolation=cv2.INTER_LINEAR) for i in bgr_data]
+    colors = [cv2.cvtColor(i, cv2.COLOR_BGR2RGB) for i in colors]
+    return colors
+
+
+def _save(raw_data: List[List[str]], path: str, alpha: bool):
+    with open(path, "w", encoding="UTF-8") as f:
+        for i in raw_data:
+            for line in i:
+                f.writelines(line)
+                f.write("\n")
+            f.write("\n")
+
+
+def _convert_to_lua_fmt(data: List[str]):
+    return [f"[[ {d} ]]," for d in data]
+
+
+def _qunat(img, k: int):
+    Z = img.reshape((-1, 3))
+    Z = np.float32(Z)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+    _, labels, palette = cv2.kmeans(Z, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+    palette = palette.astype(np.uint8)
+    quantized = palette[labels.flatten()]
+    quantized_img = quantized.reshape((img.shape))
+    return quantized_img
 
 
 def convert(
@@ -176,6 +247,8 @@ def convert(
     bg_color: Optional[Tuple[int, int, int]] = None,
     fast: bool = False,
     chunk_size: int = False,
+    alpha: bool = False,
+    quant: int = -1,
 ):
     ext = osp.splitext(source)[1][1:]
     try:
@@ -183,39 +256,43 @@ def convert(
             # TODO: detect number of channels to handle alpha in png
             bgr_data = cv2.imread(source)
         else:
+            assert not alpha
             bgr_data = _read_video_or_gif(source)
     except:
-        raise RuntimeError(f"Not support for {ext} file.")
+        if alpha:
+            raise RuntimeError("Do not support convert video in alpha mode.")
+        else:
+            raise RuntimeError(f"Not support for {ext} file.")
     if not isinstance(bgr_data, list):
         bgr_data = [bgr_data]
 
     if scale != 1.0:
         bgr_data = [_resize(i, scale, "nearest") for i in bgr_data]
+    if quant > 0:
+        bgr_data = [_qunat(frame, quant) for frame in bgr_data]
 
     gray_data = [cv2.cvtColor(i, cv2.COLOR_BGR2GRAY) for i in bgr_data]
+
     bool_maps = [apply_threshold(i, threshold) for i in gray_data]
-    
+
     if fast:
         index_maps = _fast_convert2braille(bool_maps, chunk_size)
         raw = [_get_braille(x) for x in index_maps]
     else:
         raw = _apply_convert(bool_maps)
-    color_raw = [[] for _ in range(len(gray_data))]
 
-    if not with_color:
-        print_converted(raw)
+    color_raw = None
+    hl_data = None
 
     if with_color:
-        if bg_color == (-1, -1, -1):
-            bg_color = None
-        color_raw = _apple_color(raw, bg_color, bgr_data)
+        resized_rgb_data = _convert_color(bgr_data)
+        color_raw = _apply_color(raw, bg_color, resized_rgb_data)
+        if alpha:
+            hl_data = _convert_hl(resized_rgb_data[0], bg_color)
+            hl_data.extend(_convert_to_lua_fmt(raw[0]))
+            hl_data = [hl_data]
 
-        print_converted(color_raw)
+    print_converted(color_raw or raw)
 
     if save_raw:
-        with open(save_raw, "w", encoding="UTF-8") as f:
-            for i in color_raw or raw:
-                for line in i:
-                    f.writelines(line)
-                    f.write("\n")
-                f.write("\n")
+        _save(hl_data or color_raw or raw, save_raw, alpha)
