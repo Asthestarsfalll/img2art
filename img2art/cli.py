@@ -78,7 +78,20 @@ def main(
     alpha: Annotated[
         bool, typer.Option(help="Whether generating lua code for alpha-nvim.")
     ] = False,
-    quant: Annotated[int, typer.Option(help="Apply color quantization.")] = -1,
+    quant: Annotated[
+        int,
+        typer.Option(
+            help="Apply color quantization.",
+            callback=_generate_check_func(lambda x: x >= 256),
+        ),
+    ] = -1,
+    mapping: Annotated[
+        str,
+        typer.Option(
+            help="User-define ascii characters, need to be from light to dark. The quant will be forcely set to length of mapping.",
+            callback=_generate_check_func(lambda x: len(x) >= 256),
+        ),
+    ] = "",
 ):
     if alpha and not with_color:
         with_color = True
@@ -86,8 +99,11 @@ def main(
     if bg_color == (-1, -1, -1):
         bg_color = None
 
-    if quant > 256:
-        raise RuntimeError("Consider using smaller quant.")
+    if mapping and len(mapping) < 255:
+        quant = len(mapping)
+
+    if mapping:
+        scale = [scale, scale / 2]
 
     convert(
         source,
@@ -100,6 +116,7 @@ def main(
         chunk_size,
         alpha,
         quant,
+        mapping,
     )
 
 

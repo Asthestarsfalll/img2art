@@ -1,7 +1,7 @@
 import os.path as osp
 from math import ceil
 from time import sleep
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -141,8 +141,12 @@ def _resize(img, scale, inter_type):
         inter = cv2.INTER_NEAREST
     else:
         inter = cv2.INTER_LINEAR
+    if isinstance(scale, list):
+        scalex, scaley = scale
+    else:
+        scalex = scaley = scale
 
-    return cv2.resize(img, (0, 0), fx=scale, fy=scale, interpolation=inter)
+    return cv2.resize(img, (0, 0), fx=scalex, fy=scaley, interpolation=inter)
 
 
 def print_converted(data: np.ndarray, interval: float = 0.05) -> None:
@@ -205,16 +209,19 @@ def _apply_color(raw, bg_color, rgb_data):
     return color_raw
 
 
-def _convert_color(bgr_data):
-    oh, ow = bgr_data[0].shape[:2]
-    h = oh // 4
-    w = ow // 2
-    colors = [cv2.resize(i, (w, h), interpolation=cv2.INTER_LINEAR) for i in bgr_data]
-    colors = [cv2.cvtColor(i, cv2.COLOR_BGR2RGB) for i in colors]
+def _convert_color(bgr_data, is_mapping):
+    if is_mapping:
+        oh, ow = bgr_data[0].shape[:2]
+        h = oh // 4
+        w = ow // 2
+        bgr_data = [
+            cv2.resize(i, (w, h), interpolation=cv2.INTER_LINEAR) for i in bgr_data
+        ]
+    colors = [cv2.cvtColor(i, cv2.COLOR_BGR2RGB) for i in bgr_data]
     return colors
 
 
-def _save(raw_data: List[List[str]], path: str, alpha: bool):
+def _save(raw_data: List[List[str]], path: str):
     with open(path, "w", encoding="UTF-8") as f:
         for i in raw_data:
             for line in i:
@@ -238,10 +245,24 @@ def _qunat(img, k: int):
     return quantized_img
 
 
+def _convert_mapping(gray_img, mapping):
+    uni = np.unique(gray_img[0]).tolist()
+    mapping = {u: mapping[i] for i, u in enumerate(uni)}
+    vectorized_mapping = np.vectorize(lambda x: mapping[x])
+    res = []
+    for frame in gray_img:
+        merge_lines = []
+        r = vectorized_mapping(frame).tolist()
+        for i in r:
+            merge_lines.append("".join(i))
+        res.append(merge_lines)
+    return res
+
+
 def convert(
     source: str,
     with_color: bool = False,
-    scale: float = 1.0,
+    scale: Union[float, List[float]] = 1.0,
     threshold: int = -1,
     save_raw: Optional[str] = None,
     bg_color: Optional[Tuple[int, int, int]] = None,
@@ -249,6 +270,7 @@ def convert(
     chunk_size: int = False,
     alpha: bool = False,
     quant: int = -1,
+    mapping: str = "",
 ):
     ext = osp.splitext(source)[1][1:]
     try:
@@ -263,29 +285,33 @@ def convert(
             raise RuntimeError("Do not support convert video in alpha mode.")
         else:
             raise RuntimeError(f"Not support for {ext} file.")
+
     if not isinstance(bgr_data, list):
         bgr_data = [bgr_data]
 
     if scale != 1.0:
         bgr_data = [_resize(i, scale, "nearest") for i in bgr_data]
+
     if quant > 0:
         bgr_data = [_qunat(frame, quant) for frame in bgr_data]
 
     gray_data = [cv2.cvtColor(i, cv2.COLOR_BGR2GRAY) for i in bgr_data]
 
-    bool_maps = [apply_threshold(i, threshold) for i in gray_data]
-
-    if fast:
-        index_maps = _fast_convert2braille(bool_maps, chunk_size)
-        raw = [_get_braille(x) for x in index_maps]
+    if mapping:
+        raw = _convert_mapping(gray_data, mapping)
     else:
-        raw = _apply_convert(bool_maps)
+        bool_maps = [apply_threshold(i, threshold) for i in gray_data]
+        if fast:
+            index_maps = _fast_convert2braille(bool_maps, chunk_size)
+            raw = [_get_braille(x) for x in index_maps]
+        else:
+            raw = _apply_convert(bool_maps)
 
     color_raw = None
     hl_data = None
 
     if with_color:
-        resized_rgb_data = _convert_color(bgr_data)
+        resized_rgb_data = _convert_color(bgr_data, mapping == "")
         color_raw = _apply_color(raw, bg_color, resized_rgb_data)
         if alpha:
             hl_data = _convert_hl(resized_rgb_data[0], bg_color)
@@ -295,4 +321,4 @@ def convert(
     print_converted(color_raw or raw)
 
     if save_raw:
-        _save(hl_data or color_raw or raw, save_raw, alpha)
+        _save(hl_data or color_raw or raw, save_raw)
