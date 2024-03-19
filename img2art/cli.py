@@ -73,7 +73,8 @@ def main(
         ),
     ] = False,
     chunk_size: Annotated[
-        int, typer.Option(help="Chunk size of Videos or Gifs when using torch.")
+        int, typer.Option(
+            help="Chunk size of Videos or Gifs when using torch.")
     ] = 1024,
     alpha: Annotated[
         bool, typer.Option(help="Whether generating lua code for alpha-nvim.")
@@ -92,6 +93,19 @@ def main(
             callback=_generate_check_func(lambda x: len(x) >= 256),
         ),
     ] = "",
+    loop: Annotated[
+        bool,
+        typer.Option(
+            help="Loop the output when input is GIF or Video, use Ctrl-C to end this."
+        ),
+    ] = False,
+    interval: Annotated[
+        float,
+        typer.Option(
+            help="Interval when playing GIF or Video output.",
+            callback=_generate_check_func(lambda x: x < 0),
+        ),
+    ] = 0.05,
 ):
     if alpha and not with_color:
         with_color = True
@@ -117,6 +131,8 @@ def main(
         alpha,
         quant,
         mapping,
+        loop,
+        interval,
     )
 
 

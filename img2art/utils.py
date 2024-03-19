@@ -125,7 +125,8 @@ def _generate_hl(
         HL_MAPPER[fore_color] = hl_name
         res = HL_TEMP % (
             hl_name,
-            f'fg="#{fore_color}"' + (f', bg="#{bg_color}"' if bg_color else ""),
+            f'fg="#{fore_color}"' +
+            (f', bg="#{bg_color}"' if bg_color else ""),
         )
     code = NVIM_HL_TEMP % (f'"{hl_name}"', 3 * x, 3 * x + 3)
     return res, code
@@ -149,13 +150,18 @@ def _resize(img, scale, inter_type):
     return cv2.resize(img, (0, 0), fx=scalex, fy=scaley, interpolation=inter)
 
 
-def print_converted(data: np.ndarray, interval: float = 0.05) -> None:
-    for idx, d in enumerate(data):
-        print("\033[2J")
-        for i in d:
-            print(i)
-        if idx != 0:
-            sleep(interval)
+def print_converted(
+    data: np.ndarray, interval: float = 0.05, loop: bool = False
+) -> None:
+    while True:
+        for idx, d in enumerate(data):
+            print("\033[2J")
+            for i in d:
+                print(i)
+            if idx != 0:
+                sleep(interval)
+        if not loop:
+            break
 
 
 def _read_video_or_gif(path: str) -> List[np.ndarray]:
@@ -209,8 +215,8 @@ def _apply_color(raw, bg_color, rgb_data):
     return color_raw
 
 
-def _convert_color(bgr_data, is_mapping):
-    if is_mapping:
+def _convert_color(bgr_data, to_resize):
+    if to_resize:
         oh, ow = bgr_data[0].shape[:2]
         h = oh // 4
         w = ow // 2
@@ -238,7 +244,8 @@ def _qunat(img, k: int):
     Z = img.reshape((-1, 3))
     Z = np.float32(Z)
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
-    _, labels, palette = cv2.kmeans(Z, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+    _, labels, palette = cv2.kmeans(
+        Z, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
     palette = palette.astype(np.uint8)
     quantized = palette[labels.flatten()]
     quantized_img = quantized.reshape((img.shape))
@@ -271,6 +278,8 @@ def convert(
     alpha: bool = False,
     quant: int = -1,
     mapping: str = "",
+    loop: bool = False,
+    interval: float = 0.05,
 ):
     ext = osp.splitext(source)[1][1:]
     try:
@@ -318,7 +327,7 @@ def convert(
             hl_data.extend(_convert_to_lua_fmt(raw[0]))
             hl_data = [hl_data]
 
-    print_converted(color_raw or raw)
+    print_converted(color_raw or raw, interval=interval, loop=loop)
 
     if save_raw:
         _save(hl_data or color_raw or raw, save_raw)
