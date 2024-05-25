@@ -97,6 +97,8 @@ Use your own characters mappings:
 img2art path/to/image --scale 0.1 --with-color --threshold 127 --bg-color 255, 255, 255 --save-raw path/to/save.txt --alpha --mapping " ^*!#@%"
 ```
 
+For output of gif or video, you can write a shell script to play it or use some tools like [rustyAscii](https://github.com/Arch-Storm/rustyAscii).
+
 ![](./assets/example4.png)
 
 ## Reference
