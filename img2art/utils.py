@@ -17,10 +17,26 @@ BRAILLE = (
 )
 
 HL_NAME = "I2A"
-NVIM_HL_TEMP = "{ %s, %d, %d }, "
-HL_TEMP = 'vim.api.nvim_set_hl(0, "%s", { %s })'
+NVIM_HL_TEMP = "{%s,%d,%d}, "
+HL_TEMP = 'vim.api.nvim_set_hl(0,"%s",{%s})'
 HL_MAPPER = {}
 HL_IDX = 0
+ALPHA_HEADER_TEMP = """
+local header = { 
+    type='text',
+    opts={
+        position='center',
+        hl = {
+%s
+        },
+        val = {
+%s
+        }
+    }
+}
+return header
+-- dashboard.section.header = header
+"""
 
 
 def apply_threshold(data: np.ndarray, threshold: int) -> np.ndarray:
@@ -125,8 +141,7 @@ def _generate_hl(
         HL_MAPPER[fore_color] = hl_name
         res = HL_TEMP % (
             hl_name,
-            f'fg="#{fore_color}"' +
-            (f', bg="#{bg_color}"' if bg_color else ""),
+            f'fg="#{fore_color}"' + (f', bg="#{bg_color}"' if bg_color else ""),
         )
     code = NVIM_HL_TEMP % (f'"{hl_name}"', 3 * x, 3 * x + 3)
     return res, code
@@ -188,7 +203,7 @@ def _apply_convert(bool_maps: np.ndarray) -> List[List[str]]:
     return raw
 
 
-def _convert_hl(rgb_data, bg_color):
+def _convert_nvim_hl(rgb_data, bg_color):
     if bg_color:
         bg_color = "{:02x}{:02x}{:02x}".format(*bg_color)
     h = rgb_data.shape[0]
@@ -198,10 +213,8 @@ def _convert_hl(rgb_data, bg_color):
     for i in range(h):
         generated = [_generate_hl(rgb_data, i, j, bg_color) for j in range(w)]
         hl.extend([item[0] for item in generated if item[0]])
-        code.append("{ %s }," % ("".join([item[1] for item in generated])))
-    code = "dashboard.section.header.opts.hl = {\n %s \n}" % ("\n".join(code))
-    hl.append(code)
-    return hl
+        code.append("{%s}," % ("".join([item[1] for item in generated])))
+    return hl, "\n".join(code)
 
 
 def _apply_color(raw, bg_color, rgb_data):
@@ -236,16 +249,15 @@ def _save(raw_data: List[List[str]], path: str):
             f.write("\n")
 
 
-def _convert_to_lua_fmt(data: List[str]):
-    return [f"[[ {d} ]]," for d in data]
+def _convert_to_lua_str_fmt(data: List[str]):
+    return "\n".join([f"[[{d}]]," for d in data])
 
 
-def _qunat(img, k: int):
+def _quant(img, k: int):
     Z = img.reshape((-1, 3))
     Z = np.float32(Z)
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
-    _, labels, palette = cv2.kmeans(
-        Z, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+    _, labels, palette = cv2.kmeans(Z, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
     palette = palette.astype(np.uint8)
     quantized = palette[labels.flatten()]
     quantized_img = quantized.reshape((img.shape))
@@ -294,7 +306,6 @@ def convert(
             raise RuntimeError("Do not support convert video in alpha mode.")
         else:
             raise RuntimeError(f"Not support for {ext} file.")
-
     if not isinstance(bgr_data, list):
         bgr_data = [bgr_data]
 
@@ -302,7 +313,7 @@ def convert(
         bgr_data = [_resize(i, scale, "nearest") for i in bgr_data]
 
     if quant > 0:
-        bgr_data = [_qunat(frame, quant) for frame in bgr_data]
+        bgr_data = [_quant(frame, quant) for frame in bgr_data]
 
     gray_data = [cv2.cvtColor(i, cv2.COLOR_BGR2GRAY) for i in bgr_data]
 
@@ -323,9 +334,10 @@ def convert(
         resized_rgb_data = _convert_color(bgr_data, mapping == "")
         color_raw = _apply_color(raw, bg_color, resized_rgb_data)
         if alpha:
-            hl_data = _convert_hl(resized_rgb_data[0], bg_color)
-            hl_data.extend(_convert_to_lua_fmt(raw[0]))
-            hl_data = [hl_data]
+            hl_data, code = _convert_nvim_hl(resized_rgb_data[0], bg_color)
+            hl_data = [
+                [*hl_data, ALPHA_HEADER_TEMP % (code, _convert_to_lua_str_fmt(raw[0]))]
+            ]
 
     print_converted(color_raw or raw, interval=interval, loop=loop)
 
