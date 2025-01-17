@@ -10,23 +10,22 @@ Convert image/gif/video to ascii art. If you inputs have plenty of frames, you c
 Now you can add `--alpha` to generate neovim highlight definitions, for example:
 
 ```sh
-img2art xxx.png --scale 0.1 --threshold 120 --save-raw ./xxx.txt --alpha
+img2art xxx.png --scale 0.1 --threshold 120 --save-raw ./xxx.lua --alpha
 ```
 
-It will generate code definitions in target file which consists of three parts:
+It will generate code definitions in target file which consists of two parts:
 
 1. Code of setting neovim highlight like `vim.api.nvim_set_hl(0, "I2A0", { fg="#2f3651" })`, which will be plenty of lines.
-2. The mapping between every pixels and highlights.
-3. The ascii art which was warppered by `[[  ]]` every single line.
+2. The difinition of alpha header, which consists of the mapping between every pixels and highlights and the ascii art warppered by `[[  ]]` every single line.
 
-Copy the contents of generated file and set properly in your config of alpha-nvim, it will be:
+Require the generated lua file and set properly in your config of alpha-nvim (assign header to `dashboard.section.header`), it will be:
 
 ![example2](./assets/example3.png)
 
 If img2art generate too much lines, you can specify `--quant n` to reduce the color level of input image. n is a positive integer which should be smaller than 256.
 
 ```sh
-img2art xxx.png --scale 0.1 --threshold 120 --save-raw ./xxx.txt --alpha --quant 16
+img2art xxx.png --scale 0.1 --threshold 120 --save-raw ./xxx.lua --alpha --quant 16
 ```
 
 ## Installation
