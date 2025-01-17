@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "img2art"
-version = "0.4.0"
+version = "0.4.1"
 description = ""
 authors = ["Asthestarsfalll <1186454801@qq.com>"]
 license = "MIT"
