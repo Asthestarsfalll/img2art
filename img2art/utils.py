@@ -28,8 +28,8 @@ local header = {
         position='center',
         hl = {
 %s
-        },
         }
+        },
         val = {
 %s
     }
