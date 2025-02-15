@@ -29,9 +29,9 @@ local header = {
         hl = {
 %s
         },
+        }
         val = {
 %s
-        }
     }
 }
 return header
