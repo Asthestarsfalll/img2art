@@ -29,10 +29,10 @@ local header = {
         hl = {
 %s
         },
-        val = {
+    },
+    val = {
 %s
-        }
-    }
+    },
 }
 return header
 -- dashboard.section.header = header
