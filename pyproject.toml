@@ -11,6 +11,13 @@ python = "^3.8"
 typer = "^0.15.4"
 opencv-python = "*"
 numpy = "*"
+typing-extensions = "*"
+
+[tool.poetry.group.fast]
+optional = true
+
+[tool.poetry.group.fast.dependencies]
+torch = "*"
 
 
 [tool.poetry.scripts]
